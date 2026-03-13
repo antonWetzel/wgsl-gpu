@@ -1,0 +1,31 @@
+[package]
+name = "cons"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# shader crate
+shaders = { path = "../shaders" }
+
+# API
+wgpu.workspace = true
+pollster.workspace = true
+env_logger.workspace = true
+
+# other
+raw-window-handle.workspace = true
+winit.workspace = true
+anyhow.workspace = true
+bytemuck.workspace = true
+
+[build-dependencies]
+# rust-gpu
+cargo-gpu.workspace = true
+naga.workspace = true
+bytemuck.workspace = true
+
+# other
+anyhow.workspace = true
