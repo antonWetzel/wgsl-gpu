@@ -469,6 +469,7 @@ dependencies = [
  "raw-window-handle",
  "shaders",
  "wgpu",
+ "wgsl-gpu",
  "winit",
 ]
 
@@ -2056,6 +2057,7 @@ dependencies = [
  "bytemuck",
  "glam",
  "spirv-std",
+ "wgsl-gpu",
 ]
 
 [[package]]
@@ -2813,6 +2815,22 @@ dependencies = [
  "log",
  "thiserror 2.0.18",
  "web-sys",
+]
+
+[[package]]
+name = "wgsl-gpu"
+version = "0.1.0"
+dependencies = [
+ "wgsl-gpu-macros",
+]
+
+[[package]]
+name = "wgsl-gpu-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

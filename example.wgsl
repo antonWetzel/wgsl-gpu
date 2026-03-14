@@ -5,7 +5,8 @@ struct InstanceData {
 }
 
 struct VertexOutput {
-    @builtin(position) pos: vec4<f32>
+    @builtin(position) pos: vec4<f32>,
+    @location(0) color: vec4<f32>,
 }
 
 @vertex
@@ -20,6 +21,12 @@ fn vertex_main(
         data.value_c,
         1.0,
     );
+    output.color = vec4(1.0);
 
     return output;
+}
+
+@fragment
+fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    return input.pos * input.color;
 }

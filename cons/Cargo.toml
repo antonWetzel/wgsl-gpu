@@ -7,6 +7,8 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
+wgsl-gpu.workspace = true
+
 # shader crate
 shaders = { path = "../shaders" }
 

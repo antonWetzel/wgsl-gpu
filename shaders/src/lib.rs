@@ -15,74 +15,78 @@ pub struct ShaderConstants {
     pub time: f32,
 }
 
-#[spirv(fragment)]
-pub fn main_fs(vtx_color: Vec3, output: &mut Vec4) {
-    *output = Vec4::from((vtx_color, 1.));
-}
-
-#[spirv(vertex)]
 pub fn main_vs(
-    #[spirv(vertex_index)] vert_id: u32,
-    #[spirv(descriptor_set = 0, binding = 0, storage_buffer)] constants: &ShaderConstants,
-    #[spirv(position)] vtx_pos: &mut Vec4,
-    // #[spirv(uniform_constant)] instance: &InstanceValues,
-    vtx_color: &mut Vec3,
-) {
+    vert_id: u32,
+    constants: &ShaderConstants,
+    instance: InstanceValues,
+) -> VertexOutput {
     let speed = 0.4;
     let time = constants.time * speed + vert_id as f32 * (2. * PI * 120. / 360.);
     let position = vec2(f32::sin(time), f32::cos(time));
-    *vtx_pos = Vec4::from((position, 0.0, 1.0));
 
-    let scale = 1.0;
-    *vtx_color =
-        [vec3(1., 0., 0.), vec3(0., 1., 0.), vec3(0., 0., 1.)][vert_id as usize % 3] * scale;
-}
+    let scale = instance.a * instance.b * instance.c;
 
-pub struct InstanceValues {
-    pub temp_a: f32,
-    pub b: f32,
-    pub c: f32,
-}
-
-impl InstanceValues {
-    pub fn from_wgsl_gpu(temp_a: f32, b: f32, c: f32) -> Self {
-        Self { temp_a, b, c }
+    VertexOutput {
+        vtx_pos: Vec4::from((position, 0.0, 1.0)),
+        vtx_color: [vec3(1., 0., 0.), vec3(0., 1., 0.), vec3(0., 0., 1.)][vert_id as usize % 3]
+            * scale,
     }
 }
 
-macro_rules! make_call {
-    ($wrap_name:ident, $name:ident, ($($args:tt)*), ($($params:tt)*)) => {
-        pub fn $wrap_name($($args)*) {
-            $name($($params)*)
-        }
-    };
-    ($f: expr, ($($args:tt)*) I $($params:tt)*) => {
-        make_call!($f, ($($args)* 1,) $($params)*)
-    };
+#[derive(Debug, wgsl_gpu::WgslGpuArguments)]
+pub struct InstanceValues {
+    #[wgsl_gpu(location = 3)]
+    pub a: f32,
+    #[wgsl_gpu(location = 4)]
+    pub b: f32,
+    #[wgsl_gpu(location = 5)]
+    pub c: f32,
 }
 
-macro_rules! transform_arg_a {
-    ($target:ident, ($($args:tt)*), ()) => {
-        $target!($($args)*)
-    };
-    // ($target:ident, ($($args:tt)*), ($($args_s:tt)*)) => {
-    //     $target!($($args)*)
-    // };
-    ($target:ident, ($($args:tt)*), ($arg_s:tt $($args_s:tt)*)) => {
-        transform_arg_a!($target, ($($args)* $arg_s), ($($args_s)*))
-    };
+#[derive(Debug, wgsl_gpu::WgslGpuArguments)]
+pub struct VertexOutput {
+    #[wgsl_gpu(position)] // as output
+    #[wgsl_gpu(frag_coord)] // as input
+    vtx_pos: Vec4,
+    #[wgsl_gpu(location = 0)]
+    vtx_color: Vec3,
 }
 
-fn test() {
-    transform_arg_a!(panic, (), ("{}", 0));
+wgsl_gpu::create_wrapper_function!(
+    (#[spirv(vertex)] pub fn main_vs_gpu), main_vs,
+    (
+        wgsl_gpu_InstanceValues_transform,
+        wgsl_gpu::arg_identity_transform,
+    ),
+    wgsl_gpu_VertexOutput_transform,
+    (
+        (#[spirv(vertex_index)] vert_id: u32),
+        (#[spirv(descriptor_set = 0, binding = 0, storage_buffer)] constants: &ShaderConstants),
+        (instance: InstanceValues),
+    ),
+);
+
+pub fn main_fs(input: VertexOutput) -> FragmentOutput {
+    FragmentOutput {
+        color: Vec4::from((input.vtx_color, 1.0)) * input.vtx_pos,
+    }
 }
 
-// todo:
-// - declerate rust struct similar to wgsl with locations
-// - some way to use the struct as mut argument
-//     - tt muncher
-//     - manuel args + macro to construct at first line + some drop write
-// - some way to use the struct as value arugment
-//     - tt muncher
-//     - manuel args + macro to construct at first line
-//
+#[derive(Debug, wgsl_gpu::WgslGpuArguments)]
+pub struct FragmentOutput {
+    #[wgsl_gpu(location = 0)]
+    pub color: Vec4,
+}
+
+wgsl_gpu::create_wrapper_function!(
+    (#[spirv(fragment)] pub fn main_fs_gpu), main_fs,
+    (
+        wgsl_gpu_VertexOutput_transform,
+    ),
+    wgsl_gpu_FragmentOutput_transform,
+    (
+        (input: VertexOutput),
+    ),
+);
+
+// todo: macro to create wrapper macro invocation from function

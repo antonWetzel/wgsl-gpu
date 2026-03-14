@@ -7,6 +7,8 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
+wgsl-gpu.workspace = true
+
 spirv-std.workspace = true
 glam.workspace = true
 bytemuck.workspace = true

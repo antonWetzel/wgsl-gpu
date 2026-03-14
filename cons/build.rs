@@ -10,7 +10,7 @@ pub fn main() -> anyhow::Result<()> {
         .copied()
         .collect::<PathBuf>();
 
-    let mut install = Install::from_shader_crate(crate_path.clone());
+    let install = Install::from_shader_crate(crate_path.clone());
     // install.rebuild_codegen = true;
     let backend = install.run()?;
     let mut builder = backend.to_spirv_builder(crate_path, "spirv-unknown-vulkan1.3");
@@ -34,6 +34,7 @@ pub fn main() -> anyhow::Result<()> {
     // let data =
     //     naga::back::spv::write_vec(&module, &info, &naga::back::spv::Options::default(), None)
     //         .unwrap();
+    // std::fs::write("test.spirv", bytemuck::cast_slice(&data)).unwrap();
 
     let data = std::fs::read(spv_path).unwrap();
     let module = naga::front::spv::parse_u8_slice(
@@ -56,7 +57,7 @@ pub fn main() -> anyhow::Result<()> {
         naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
             .unwrap();
 
-    // panic!("{}", source);
+    panic!("{}", source);
 
     Ok(())
 }

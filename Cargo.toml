@@ -1,8 +1,5 @@
 [workspace]
-members = [
-    "shaders",
-    "cons"
-]
+members = ["shaders", "cons"]
 resolver = "3"
 
 [workspace.package]
@@ -13,6 +10,9 @@ edition = "2024"
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
 
 [workspace.dependencies]
+wgsl-gpu = { path = "./wgsl-gpu" }
+wgsl-gpu-macros = { path = "./wgsl-gpu-macros" }
+
 # API
 wgpu = { version = "27.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "vulkan-portability", "spirv", "wgsl"] }
 pollster = "0.4.0"
@@ -29,3 +29,8 @@ raw-window-handle = "0.6.2"
 winit = "0.30.0"
 env_logger = "0.11.8"
 anyhow = "1.0.98"
+
+# proc macro
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+syn = { version = "2.0.117", features = ["derive"] }
