@@ -57,7 +57,5 @@ pub fn main() -> anyhow::Result<()> {
         naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
             .unwrap();
 
-    panic!("{}", source);
-
     Ok(())
 }

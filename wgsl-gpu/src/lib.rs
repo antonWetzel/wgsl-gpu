@@ -1,6 +1,6 @@
 #![no_std]
 
-pub use wgsl_gpu_macros::WgslGpuArguments;
+pub use wgsl_gpu_macros::{Arguments, entry};
 
 #[macro_export]
 macro_rules! create_wrapper_function {
@@ -64,12 +64,12 @@ macro_rules! create_wrapper_function {
 
     // entry point with somewhat sane syntax
     (
-        $wrapper_name:tt, $name:ident, $macros:tt, $ret_macro:path, $args:tt,
+        $wrapper_name:tt, $name:ident, ($($macros:path,)*), $ret_macro:path, $args:tt,
     ) => {
         #[spirv_std::macros::spirv_recursive_for_testing]
         $crate::create_wrapper_function!(
             __param,
-            $wrapper_name, $name, $macros, $ret_macro,
+            $wrapper_name, $name, ($($macros,)* $crate::arg_identity_transform,), $ret_macro,
             (), (),
             $args,
         );
@@ -84,7 +84,7 @@ macro_rules! arg_identity_transform {
     };
 }
 
-pub trait WglsGpuArguments {
+pub trait Arguments {
     type Arguments;
 
     fn from_arguments(arguments: Self::Arguments) -> Self;

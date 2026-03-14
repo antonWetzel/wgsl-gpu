@@ -1,21 +1,18 @@
 extern crate proc_macro;
 
+use std::ops::Not;
+
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned};
-use syn::DeriveInput;
+use quote::{ToTokens, quote, quote_spanned};
+use syn::{DeriveInput, spanned::Spanned};
 
-#[proc_macro]
-pub fn make_answer(_item: TokenStream) -> TokenStream {
-    "fn answer() -> u32 { 42 }".parse().unwrap()
-}
-
-#[proc_macro_derive(WgslGpuArguments, attributes(wgsl_gpu))]
-pub fn wgsl_gpu_arguments(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Arguments, attributes(wgsl_gpu))]
+pub fn arguments(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
-    wgsl_gpu_arguments_inner(input).into()
+    arguments_inner(input).into()
 }
 
-fn wgsl_gpu_arguments_inner(input: DeriveInput) -> proc_macro2::TokenStream {
+fn arguments_inner(input: DeriveInput) -> proc_macro2::TokenStream {
     let data = match &input.data {
         syn::Data::Struct(data) => data,
         syn::Data::Enum(data) => {
@@ -72,7 +69,7 @@ fn wgsl_gpu_arguments_inner(input: DeriveInput) -> proc_macro2::TokenStream {
     let macro_name = quote::format_ident!("wgsl_gpu_{}_transform", name);
 
     quote! {
-        impl wgsl_gpu::WglsGpuArguments for #name {
+        impl wgsl_gpu::Arguments for #name {
             type Arguments = (#(#arg_types,)*);
 
             fn from_arguments(arguments: Self::Arguments) -> Self {
@@ -85,10 +82,12 @@ fn wgsl_gpu_arguments_inner(input: DeriveInput) -> proc_macro2::TokenStream {
         }
 
         #[spirv_std::macros::spirv_recursive_for_testing]
+        #[macro_export]
+        #[doc(hidden)]
         macro_rules! #macro_name {
             // arg matches, transform and return to main macro
             ($target:path, ($($context:tt)*), $macros:tt, ($name:ident: #name)) => {
-                $target!($($context)*, (#( #[spirv(#attributes)] #tuple_arg: #tuple_types),*), (wgsl_gpu::WglsGpuArguments::from_arguments((#(#tuple_fields),*))),);
+                $target!($($context)*, (#( #[spirv(#attributes)] #tuple_arg: #tuple_types),*), (wgsl_gpu::Arguments::from_arguments((#(#tuple_fields),*))),);
             };
             // no match, contiue with other tranform macros
             ($target:path, $context:tt, ($macro:path, $($macro_tail:tt)*), $arg:tt) => {
@@ -99,5 +98,86 @@ fn wgsl_gpu_arguments_inner(input: DeriveInput) -> proc_macro2::TokenStream {
                 $target!($($context)*, (#( #[spirv(#ret_attributes)] #ret_fields: &mut #ret_types),*), output, (#(*#ret_fields_asign = output.#ret_field_read;)*));
             };
         }
+    }
+}
+
+#[proc_macro_attribute]
+pub fn entry(arguments: TokenStream, input: TokenStream) -> TokenStream {
+    let item = syn::parse_macro_input!(input as syn::Item);
+    let signature = syn::parse_macro_input!(arguments as EntrySignature);
+    wgsl_gpu_entry_inner(signature, item).into()
+}
+
+fn wgsl_gpu_entry_inner(signature: EntrySignature, item: syn::Item) -> proc_macro2::TokenStream {
+    let mut item = match item {
+        syn::Item::Fn(item) => item,
+        _ => return quote_spanned! {item.span() => compile_error!("expected function") },
+    };
+
+    let mut attributes = proc_macro2::TokenStream::new();
+    item.attrs.retain(|att| {
+        if att.path().is_ident("spirv") {
+            att.to_tokens(&mut attributes);
+            false
+        } else {
+            true
+        }
+    });
+
+    let mut inputs = proc_macro2::TokenStream::new();
+    for input in item.sig.inputs.iter_mut() {
+        let syn::FnArg::Typed(arg) = input else {
+            return quote_spanned! {input.span() => compile_error!("self not supported") };
+        };
+        inputs.extend(quote! { (#arg), });
+
+        arg.attrs.retain(|att| att.path().is_ident("spirv").not());
+    }
+
+    let ident = &item.sig.ident;
+    let ident_gpu = quote::format_ident!("{}_gpu", ident);
+
+    let arg_macros = signature.inputs.iter().map(|ty| transform_macro_name(ty));
+    let ret_macro = match &item.sig.output {
+        syn::ReturnType::Default => panic!("return type required"),
+        syn::ReturnType::Type(_, ty) => transform_macro_name(ty),
+    };
+
+    quote! {
+        #item
+
+        wgsl_gpu::create_wrapper_function!(
+            (#attributes pub fn #ident_gpu), #ident,
+            (
+                #(#arg_macros,)*
+            ),
+            #ret_macro,
+            (
+                #inputs
+            ),
+        );
+    }
+}
+
+fn transform_macro_name(ty: &syn::Type) -> syn::Type {
+    let mut ty = ty.clone();
+    let syn::Type::Path(path) = &mut ty else {
+        panic!("type must be a path")
+    };
+    if let Some(last) = path.path.segments.last_mut() {
+        last.ident = quote::format_ident!("wgsl_gpu_{}_transform", &last.ident);
+    }
+    ty
+}
+
+struct EntrySignature {
+    pub inputs: syn::punctuated::Punctuated<syn::Type, syn::Token![,]>,
+}
+
+impl syn::parse::Parse for EntrySignature {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            inputs: input.parse_terminated(syn::Type::parse, syn::Token![,])?,
+        })
     }
 }
