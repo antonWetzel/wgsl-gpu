@@ -33,12 +33,12 @@ pub struct VertexOutput {
     vtx_color: Vec3,
 }
 
-#[wgsl_gpu::entry(InstanceValues)]
+#[wgsl_gpu::entry]
 #[spirv(vertex)]
 pub fn main_vs(
     #[spirv(vertex_index)] vert_id: u32,
     #[spirv(descriptor_set = 0, binding = 0, storage_buffer)] constants: &ShaderConstants,
-    instance: InstanceValues,
+    #[wgsl_gpu(arguments)] instance: InstanceValues,
 ) -> VertexOutput {
     let speed = 0.4;
     let time = constants.time * speed + vert_id as f32 * (2. * PI * 120. / 360.);
@@ -52,16 +52,10 @@ pub fn main_vs(
     }
 }
 
-#[derive(Debug, wgsl_gpu::Arguments)]
-pub struct FragmentOutput {
-    #[wgsl_gpu(location = 0)]
-    pub color: Vec4,
-}
-
-#[wgsl_gpu::entry(VertexOutput)]
+#[wgsl_gpu::entry]
 #[spirv(fragment)]
-pub fn main_fs(input: VertexOutput) -> FragmentOutput {
-    FragmentOutput {
+pub fn main_fs(#[wgsl_gpu(arguments)] input: VertexOutput) -> shaders_dep::FragmentOutput {
+    shaders_dep::FragmentOutput {
         color: Vec4::from((input.vtx_color, 1.0)) * input.vtx_pos,
     }
 }

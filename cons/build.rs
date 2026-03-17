@@ -22,20 +22,6 @@ pub fn main() -> anyhow::Result<()> {
     let spv_path = compile_result.module.unwrap_single();
     println!("cargo::rustc-env=SHADER_SPV_PATH={}", spv_path.display());
 
-    // let data = include_str!("/home/antonwetzel/Documents/rust-v/example.wgsl");
-    // let module = naga::front::wgsl::parse_str(data).unwrap();
-
-    // let info = naga::valid::Validator::new(ValidationFlags::default(), Capabilities::default())
-    //     .subgroup_stages(naga::valid::ShaderStages::empty())
-    //     .subgroup_operations(naga::valid::SubgroupOperationSet::all())
-    //     .validate(&module)
-    //     .unwrap();
-
-    // let data =
-    //     naga::back::spv::write_vec(&module, &info, &naga::back::spv::Options::default(), None)
-    //         .unwrap();
-    // std::fs::write("test.spirv", bytemuck::cast_slice(&data)).unwrap();
-
     let data = std::fs::read(spv_path).unwrap();
     let module = naga::front::spv::parse_u8_slice(
         bytemuck::cast_slice(&data),
@@ -56,6 +42,8 @@ pub fn main() -> anyhow::Result<()> {
     let source =
         naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
             .unwrap();
+
+    panic!("{}", source);
 
     Ok(())
 }

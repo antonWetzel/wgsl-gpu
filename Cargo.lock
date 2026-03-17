@@ -2056,6 +2056,17 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
+ "shaders-dep",
+ "spirv-std",
+ "wgsl-gpu",
+]
+
+[[package]]
+name = "shaders-dep"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
  "spirv-std",
  "wgsl-gpu",
 ]

@@ -1,5 +1,5 @@
 [workspace]
-members = ["shaders", "cons"]
+members = ["shaders", "cons", "shaders-dep"]
 resolver = "3"
 
 [workspace.package]
@@ -33,4 +33,4 @@ anyhow = "1.0.98"
 # proc macro
 proc-macro2 = "1.0.106"
 quote = "1.0.45"
-syn = { version = "2.0.117", features = ["derive"] }
+syn = { version = "2.0.117", features = ["derive", "parsing"] }

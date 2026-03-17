@@ -1,16 +1,14 @@
 [package]
-name = "shaders"
+name = "shaders-dep"
 version.workspace = true
 edition.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
-shaders-dep = { path = "../shaders-dep" }
-
 wgsl-gpu.workspace = true
 
 spirv-std.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
+
+[lints]
+workspace = true
