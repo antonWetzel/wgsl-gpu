@@ -5,6 +5,3 @@ edition.workspace = true
 
 [dependencies]
 wgsl-gpu-macros.workspace = true
-
-[lints]
-workspace = true

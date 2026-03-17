@@ -1,0 +1,30 @@
+[workspace]
+members = ["consumer"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+
+[workspace.dependencies]
+wgsl-gpu = { path = "../wgsl-gpu" }
+
+# API
+wgpu = { version = "27.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "vulkan-portability", "spirv", "wgsl"] }
+pollster = "0.4.0"
+naga = { version = "27.0.1", features = ["wgsl-in", "spv-in", "wgsl-out", "spv-out"] }
+
+# rust-gpu
+cargo-gpu = { git = "https://github.com/Rust-GPU/cargo-gpu", rev = "7f1995823a82ee6e6b7a63b57313c4a829856e3d" }
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "30896871ba00e668029ccb724f1438202b284708" }
+
+# other
+glam = { version = "0.32.0", default-features = false }
+bytemuck = { version = "1.24.0", features = ["derive"] }
+raw-window-handle = "0.6.2"
+winit = "0.30.0"
+env_logger = "0.11.8"
+anyhow = "1.0.98"

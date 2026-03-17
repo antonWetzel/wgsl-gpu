@@ -43,7 +43,13 @@ pub fn main() -> anyhow::Result<()> {
         naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
             .unwrap();
 
-    panic!("{}", source);
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let dest_path = std::path::Path::new(&out_dir).join("shaders.rs");
+    std::fs::write(
+        dest_path,
+        format!("const SHADERS: &str = r##\"{}\"##;", source),
+    )
+    .unwrap();
 
     Ok(())
 }
