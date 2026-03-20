@@ -3,12 +3,17 @@ name = "shaders-dep"
 version.workspace = true
 edition.workspace = true
 
+[features]
+native = ["wgpu"]
+
 [dependencies]
 wgsl-gpu.workspace = true
 
 spirv-std.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
+
+wgpu = { workspace = true, optional = true }
 
 [lints]
 workspace = true

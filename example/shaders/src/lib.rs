@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "native"), no_std)]
 
 use bytemuck::{Pod, Zeroable};
 use core::f32::consts::PI;
@@ -8,20 +8,28 @@ use spirv_std::num_traits::Float;
 
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
-pub struct ShaderConstants {
-    pub width: u32,
-    pub height: u32,
+pub struct ShaderUniform {
+    pub speed: f32,
     pub time: f32,
+    pub color_scale: f32,
 }
 
-#[derive(Debug, wgsl_gpu::Arguments)]
-pub struct InstanceValues {
-    #[wgsl_gpu(location = 3)]
-    pub a: f32,
-    #[wgsl_gpu(location = 4)]
-    pub b: f32,
-    #[wgsl_gpu(location = 5)]
-    pub c: f32,
+#[derive(Debug, Copy, Clone, Pod, Zeroable, wgsl_gpu::Arguments)]
+#[repr(C)]
+#[wgsl_gpu(attributes)]
+pub struct Vertex {
+    #[wgsl_gpu(location = 0)]
+    pub position: Vec2,
+}
+
+#[derive(Debug, Copy, Clone, Pod, Zeroable, wgsl_gpu::Arguments)]
+#[repr(C)]
+#[wgsl_gpu(attributes)]
+pub struct Instance {
+    #[wgsl_gpu(location = 1)]
+    pub color: Vec3,
+    #[wgsl_gpu(location = 2)]
+    pub offset: f32,
 }
 
 #[derive(Debug, wgsl_gpu::Arguments)]
@@ -36,26 +44,27 @@ pub struct VertexOutput {
 #[wgsl_gpu::entry]
 #[spirv(vertex)]
 pub fn main_vs(
-    #[spirv(vertex_index)] vert_id: u32,
-    #[spirv(descriptor_set = 0, binding = 0, storage_buffer)] constants: &ShaderConstants,
-    #[wgsl_gpu(arguments)] instance: InstanceValues,
+    // #[spirv(vertex_index)] vert_id: u32,
+    #[spirv(descriptor_set = 0, binding = 0, uniform)] uniform: &ShaderUniform,
+    #[wgsl_gpu(arguments)] vertex: Vertex,
+    #[wgsl_gpu(arguments)] instance: Instance,
 ) -> VertexOutput {
-    let speed = 0.4;
-    let time = constants.time * speed + vert_id as f32 * (2. * PI * 120. / 360.);
-    let position = Vec2::new(f32::sin(time), f32::cos(time));
-
-    let scale = instance.a * instance.b * instance.c;
+    let angle = uniform.time * uniform.speed + instance.offset;
+    let position = glam::Mat2::from_angle(angle).mul_vec2(vertex.position);
 
     VertexOutput {
         vtx_pos: Vec4::from((position, 0.0, 1.0)),
-        vtx_color: [Vec3::X, Vec3::Y, Vec3::Z][vert_id as usize % 3] * scale,
+        vtx_color: instance.color,
     }
 }
 
 #[wgsl_gpu::entry]
 #[spirv(fragment)]
-pub fn main_fs(#[wgsl_gpu(arguments)] input: VertexOutput) -> shaders_dep::FragmentOutput {
+pub fn main_fs(
+    #[spirv(descriptor_set = 0, binding = 0, uniform)] uniform: &ShaderUniform,
+    #[wgsl_gpu(arguments)] input: VertexOutput,
+) -> shaders_dep::FragmentOutput {
     shaders_dep::FragmentOutput {
-        color: Vec4::from((input.vtx_color, 1.0)) * input.vtx_pos,
+        color: Vec4::from((input.vtx_color * uniform.color_scale, 1.0)),
     }
 }

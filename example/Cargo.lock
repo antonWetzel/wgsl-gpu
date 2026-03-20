@@ -488,6 +488,7 @@ dependencies = [
  "bytemuck",
  "cargo-gpu",
  "env_logger",
+ "glam",
  "naga",
  "pollster",
  "raw-window-handle",
@@ -837,6 +838,7 @@ version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 dependencies = [
+ "bytemuck",
  "libm",
 ]
 
@@ -2082,6 +2084,7 @@ dependencies = [
  "glam",
  "shaders-dep",
  "spirv-std",
+ "wgpu",
  "wgsl-gpu",
 ]
 
@@ -2092,6 +2095,7 @@ dependencies = [
  "bytemuck",
  "glam",
  "spirv-std",
+ "wgpu",
  "wgsl-gpu",
 ]
 

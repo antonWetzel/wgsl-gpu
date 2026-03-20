@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "native"), no_std)]
 
 use glam::Vec4;
 
