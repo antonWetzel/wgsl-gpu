@@ -1,10 +1,10 @@
 extern crate proc_macro;
 
-use std::ops::Not;
+use std::ops::{Deref, Not};
 
 use proc_macro::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
-use syn::{DeriveInput, spanned::Spanned};
+use syn::{DeriveInput, parenthesized, spanned::Spanned};
 
 #[proc_macro_derive(Arguments, attributes(wgsl_gpu))]
 pub fn arguments(input: TokenStream) -> TokenStream {
@@ -161,13 +161,16 @@ fn arguments_inner(input: DeriveInput) -> proc_macro2::TokenStream {
 #[proc_macro_attribute]
 pub fn entry(_arguments: TokenStream, input: TokenStream) -> TokenStream {
     let item = syn::parse_macro_input!(input as syn::Item);
-    wgsl_gpu_entry_inner(item).into()
+    match wgsl_gpu_entry_inner(item) {
+        Ok(tokens) => tokens.into(),
+        Err(tokens) => tokens.into_compile_error().into(),
+    }
 }
 
-fn wgsl_gpu_entry_inner(item: syn::Item) -> proc_macro2::TokenStream {
+fn wgsl_gpu_entry_inner(item: syn::Item) -> Result<proc_macro2::TokenStream, syn::Error> {
     let mut item = match item {
         syn::Item::Fn(item) => item,
-        _ => return quote_spanned! {item.span() => compile_error!("expected function") },
+        _ => return Err(syn::Error::new(item.span(), "expected function")),
     };
 
     let mut attributes = proc_macro2::TokenStream::new();
@@ -181,43 +184,82 @@ fn wgsl_gpu_entry_inner(item: syn::Item) -> proc_macro2::TokenStream {
     });
 
     let mut inputs = proc_macro2::TokenStream::new();
+
+    let mut step_modes = Vec::new();
+    let mut argument_types = Vec::new();
+
     for input in item.sig.inputs.iter_mut() {
         let syn::FnArg::Typed(arg) = input else {
-            return quote_spanned! {input.span() => compile_error!("self not supported") };
+            return Err(syn::Error::new(input.span(), "self not supported"));
         };
-        let arguments = arg
+
+        let att = arg
             .attrs
             .iter()
-            .filter(|att| att.path().is_ident("wgsl_gpu"))
-            .filter_map(|att| match &att.meta {
-                syn::Meta::List(list) => Some(&list.tokens),
-                _ => None,
-            })
-            .any(|tokens| {
-                tokens.clone().into_iter().all(|token| match token {
-                    proc_macro2::TokenTree::Ident(ident) => ident == "arguments",
-                    _ => false,
-                })
-            });
+            .find(|att| att.path().is_ident("wgsl_gpu"))
+            .map(|att| att.clone());
+
         arg.attrs
             .retain(|att| att.path().is_ident("wgsl_gpu").not());
 
-        let prefix = match arguments {
-            false => quote! { __keep => },
-            true => {
-                let macro_name = transform_macro_name(&arg.ty);
-                quote! { __expand #macro_name => }
+        let prefix = if let Some(att) = att {
+            let mut arguments = false;
+            att.parse_nested_meta(|meta| {
+                if meta.path.is_ident("arguments") {
+                    arguments = true;
+                } else if meta.path.is_ident("step_mode") {
+                    let value = meta.value()?;
+                    let ident = value.parse::<syn::Ident>()?;
+                    step_modes.push(ident);
+                }
+                Ok(())
+            })?;
+            if arguments.not() {
+                return Err(syn::Error::new(att.span(), "missing 'arguments' argument"));
             }
+
+            argument_types.push(arg.ty.deref().clone());
+            let macro_name = transform_macro_name(&arg.ty);
+            quote! { __expand #macro_name => }
+        } else {
+            quote! { __keep => }
         };
+
         inputs.extend(quote! { #prefix (#arg), });
 
         arg.attrs.retain(|att| att.path().is_ident("spirv").not());
     }
 
     let ident = &item.sig.ident;
+    let ident_upper = ident.to_string().to_uppercase();
     let ident_gpu = quote::format_ident!("{}_gpu", ident);
     let ident_gpu_value = ident_gpu.to_string();
-    let const_name = quote::format_ident!("{}_NAME", ident.to_string().to_uppercase());
+    let const_name = quote::format_ident!("{}_NAME", ident_upper);
+
+    let vertex_buffer_layout = if step_modes.is_empty() {
+        quote! {}
+    } else {
+        if step_modes.len() != argument_types.len() {
+            return Err(syn::Error::new(
+                item.sig.ident.span(),
+                "step mode must be provided for all or none arguments",
+            ));
+        }
+        let const_name = quote::format_ident!("{}_VERTEX_BUFFER_LAYOUTS", ident_upper);
+        let types = argument_types.iter();
+        let step_modes = step_modes.iter();
+
+        quote! {
+            #[cfg(feature = "native")]
+            pub const #const_name: &[wgpu::VertexBufferLayout] = &[#(
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<#types>() as u64,
+                    step_mode: wgpu::VertexStepMode::#step_modes,
+                    attributes: #types::ATTRIBUTES,
+                },
+            )*];
+        }
+    };
 
     // let arg_macros = signature.inputs.iter().map(|ty| transform_macro_name(ty));
     let ret_macro = match &item.sig.output {
@@ -225,7 +267,7 @@ fn wgsl_gpu_entry_inner(item: syn::Item) -> proc_macro2::TokenStream {
         syn::ReturnType::Type(_, ty) => transform_macro_name(ty),
     };
 
-    quote! {
+    let tokens = quote! {
         #item
 
         wgsl_gpu::create_wrapper_function!(
@@ -237,7 +279,11 @@ fn wgsl_gpu_entry_inner(item: syn::Item) -> proc_macro2::TokenStream {
         );
 
         pub const #const_name: &str = #ident_gpu_value;
-    }
+
+        #vertex_buffer_layout
+    };
+
+    Ok(tokens)
 }
 
 fn transform_macro_name(ty: &syn::Type) -> syn::Type {

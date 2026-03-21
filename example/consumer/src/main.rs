@@ -74,7 +74,8 @@ impl winit::application::ApplicationHandler for App {
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
-            // todo: get this from the vertex andf fragment entry points
+            // todo: get this from the vertex and fragment entry points
+            // entries = const { shaders::MAIN_VS_BIND_GROUPS.merge(shaders::MAIN_FS_BIND_GROUPS) },
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
@@ -100,19 +101,7 @@ impl winit::application::ApplicationHandler for App {
                 module: &module,
                 entry_point: Some(shaders::MAIN_VS_NAME),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[
-                    // todo: get this from the vertex entry point
-                    wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<shaders::Vertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: shaders::Vertex::ATTRIBUTES,
-                    },
-                    wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<shaders::Instance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: shaders::Instance::ATTRIBUTES,
-                    },
-                ],
+                buffers: shaders::MAIN_VS_VERTEX_BUFFER_LAYOUTS,
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -257,6 +246,8 @@ impl winit::application::ApplicationHandler for App {
                     })],
                     ..wgpu::RenderPassDescriptor::default()
                 });
+                // keep untyped, but add constants for the indices
+                // - render_pass.set_bind_group(shaders::MAIN_VS_BIND_GROUP_UNIFORM, &state.uniform_bind_group, &[]);
                 render_pass.set_pipeline(&state.pipeline);
                 render_pass.set_bind_group(0, &state.uniform_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));

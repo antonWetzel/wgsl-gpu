@@ -46,8 +46,8 @@ pub struct VertexOutput {
 pub fn main_vs(
     // #[spirv(vertex_index)] vert_id: u32,
     #[spirv(descriptor_set = 0, binding = 0, uniform)] uniform: &ShaderUniform,
-    #[wgsl_gpu(arguments)] vertex: Vertex,
-    #[wgsl_gpu(arguments)] instance: Instance,
+    #[wgsl_gpu(arguments, step_mode = Vertex)] vertex: Vertex,
+    #[wgsl_gpu(arguments, step_mode = Instance)] instance: Instance,
 ) -> VertexOutput {
     let angle = uniform.time * uniform.speed + instance.offset;
     let position = glam::Mat2::from_angle(angle).mul_vec2(vertex.position);
