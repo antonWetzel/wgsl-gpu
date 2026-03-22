@@ -32,23 +32,20 @@ pub fn main() -> anyhow::Result<()> {
     // )
     // .unwrap();
 
-    // let info = naga::valid::Validator::new(ValidationFlags::default(), Capabilities::default())
-    //     .subgroup_stages(naga::valid::ShaderStages::empty())
-    //     .subgroup_operations(naga::valid::SubgroupOperationSet::all())
-    //     .validate(&module)
-    //     .unwrap();
+    // let info = naga::valid::Validator::new(
+    //     naga::valid::ValidationFlags::default(),
+    //     naga::valid::Capabilities::default(),
+    // )
+    // .subgroup_stages(naga::valid::ShaderStages::empty())
+    // .subgroup_operations(naga::valid::SubgroupOperationSet::all())
+    // .validate(&module)
+    // .unwrap();
 
     // let source =
     //     naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
     //         .unwrap();
 
-    // let out_dir = std::env::var("OUT_DIR").unwrap();
-    // let dest_path = std::path::Path::new(&out_dir).join("shaders.rs");
-    // std::fs::write(
-    //     dest_path,
-    //     format!("const SHADERS: &str = r##\"{}\"##;", source),
-    // )
-    // .unwrap();
+    // panic!("{}", source);
 
     Ok(())
 }

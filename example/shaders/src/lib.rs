@@ -5,6 +5,7 @@ use core::f32::consts::PI;
 use glam::{Vec2, Vec3, Vec4};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
+use spirv_std::{Image, Sampler, image::ImageWithMethods};
 
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
@@ -46,6 +47,7 @@ pub struct VertexOutput {
 pub fn main_vs(
     // #[spirv(vertex_index)] vert_id: u32,
     #[spirv(descriptor_set = 0, binding = 0, uniform)] uniform: &ShaderUniform,
+
     #[wgsl_gpu(arguments, step_mode = Vertex)] vertex: Vertex,
     #[wgsl_gpu(arguments, step_mode = Instance)] instance: Instance,
 ) -> VertexOutput {
@@ -62,9 +64,12 @@ pub fn main_vs(
 #[spirv(fragment)]
 pub fn main_fs(
     #[spirv(descriptor_set = 0, binding = 0, uniform)] uniform: &ShaderUniform,
+    #[spirv(descriptor_set = 1, binding = 0)] image: &Image!(2D, type=f32, sampled),
+    #[spirv(descriptor_set = 1, binding = 1)] sampler: &Sampler,
     #[wgsl_gpu(arguments)] input: VertexOutput,
 ) -> shaders_dep::FragmentOutput {
+    let color = image.sample(*sampler, Vec2::new(0.0, 0.0));
     shaders_dep::FragmentOutput {
-        color: Vec4::from((input.vtx_color * uniform.color_scale, 1.0)),
+        color: Vec4::from((input.vtx_color * uniform.color_scale, 1.0)) * color,
     }
 }
