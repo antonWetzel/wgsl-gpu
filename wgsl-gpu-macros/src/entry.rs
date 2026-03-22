@@ -129,6 +129,12 @@ fn transform_macro_name(ty: &syn::Type) -> syn::Type {
 /*
 binding types
 pub enum BindingType {
+    Buffer {
+        ty: BufferBindingType,
+        has_dynamic_offset: bool,
+        min_binding_size: Option<NonZero<u64>>,
+    },
+    Sampler(SamplerBindingType),
     Texture {
         sample_type: TextureSampleType,
         view_dimension: TextureViewDimension,
@@ -145,3 +151,117 @@ pub enum BindingType {
     ExternalTexture,
 }
 */
+
+enum TextureDimension {
+    D1,
+    D2,
+    D2Array,
+    Cube,
+    CubeArray,
+    D3,
+}
+
+// sampler has no generics, this info is related to the texture used
+pub enum TextureSampleType {
+    Float { filterable: bool },
+    Depth,
+    Sint,
+    Uint,
+}
+
+enum ResourceKind {
+    UniformBuffer,
+    Sampler,
+    Texture {
+        dim: TextureDimension,
+        sample_type: TextureSampleType,
+        multisampled: bool,
+    },
+    StorageBuffer,
+}
+
+enum ShaderStage {
+    Vertex,
+    Fragment,
+    Compute,
+}
+
+struct BindingInfo {
+    set: syn::LitInt,
+    binding: syn::LitInt,
+    kind: ResourceKind,
+    // visibility: ShaderStage, // todo: get from the function attributes
+}
+
+fn bind_group_infos(fn_item: &syn::ItemFn, stage: ShaderStage) -> Vec<BindingInfo> {
+    fn_item
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            let syn::FnArg::Typed(pat_type) = input else {
+                return None;
+            };
+            for attr in &pat_type.attrs {
+                if attr.path().is_ident("spirv").not() {
+                    continue;
+                }
+
+                let syn::Meta::List(list) = &attr.meta else {
+                    continue;
+                };
+                if let Some(info) = binding_info(&list, &pat_type.ty) {
+                    return Some(info);
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+fn binding_info(meta: &syn::MetaList, ty: &syn::Type) -> Option<BindingInfo> {
+    let mut set = None;
+    let mut binding = None;
+    let mut kind = None;
+
+    meta.parse_nested_meta(|meta| {
+        if meta.path.is_ident("descriptor_set") {
+            set = Some(meta.value()?.parse::<syn::LitInt>()?);
+        } else if meta.path.is_ident("binding") {
+            binding = Some(meta.value()?.parse::<syn::LitInt>()?);
+        } else if meta.path.is_ident("uniform") {
+            kind = Some(ResourceKind::UniformBuffer);
+        }
+        Ok(())
+    })
+    .ok()?;
+
+    let (set, binding) = (set?, binding?);
+    let kind = kind.or_else(|| binding_info_from_type(ty))?;
+    Some(BindingInfo {
+        set,
+        binding,
+        // visibility,
+        kind,
+    })
+}
+
+fn binding_info_from_type(ty: &syn::Type) -> Option<ResourceKind> {
+    if let syn::Type::Reference(ref_ref) = ty {
+        return binding_info_from_type(&ref_ref.elem);
+    }
+
+    if let syn::Type::Macro(macro_ty) = ty {
+        if macro_ty.mac.path.is_ident("Image") {
+            todo!("parse image macro for bind group info")
+        }
+    }
+
+    if let syn::Type::Path(path) = ty {
+        if path.path.is_ident("Sampler") {
+            return Some(ResourceKind::Sampler);
+        }
+    }
+
+    None
+}
