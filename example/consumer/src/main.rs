@@ -72,25 +72,21 @@ impl winit::application::ApplicationHandler for App {
 
         let module = device.create_shader_module(wgpu::include_spirv!(env!("SHADER_SPV_PATH")));
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            // todo: get this from the vertex and fragment entry points
-            // entries = const { shaders::MAIN_VS_BIND_GROUPS.merge(shaders::MAIN_FS_BIND_GROUPS) },
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let bind_group_layout_0 =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &shaders::MAIN_BIND_GROUPS[0],
+            });
+
+        let bind_group_layout_1 =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &shaders::MAIN_BIND_GROUPS[1],
+            });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[&bind_group_layout_0, &bind_group_layout_1],
             push_constant_ranges: &[],
         });
 
@@ -138,7 +134,7 @@ impl winit::application::ApplicationHandler for App {
 
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
-            layout: &bind_group_layout,
+            layout: &bind_group_layout_0,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: uniform_buffer.as_entire_binding(),

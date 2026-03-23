@@ -47,7 +47,6 @@ pub struct VertexOutput {
 pub fn main_vs(
     // #[spirv(vertex_index)] vert_id: u32,
     #[spirv(descriptor_set = 0, binding = 0, uniform)] uniform: &ShaderUniform,
-
     #[wgsl_gpu(arguments, step_mode = Vertex)] vertex: Vertex,
     #[wgsl_gpu(arguments, step_mode = Instance)] instance: Instance,
 ) -> VertexOutput {
@@ -73,3 +72,83 @@ pub fn main_fs(
         color: Vec4::from((input.vtx_color * uniform.color_scale, 1.0)) * color,
     }
 }
+
+// todo: generate this macro from the function signature
+// macro data arguments
+// - total set count
+// - total bindings per set
+// - edits to the bindings per set
+#[macro_export]
+macro_rules! wgsl_gpu_main_vs_bind_groups_macro {
+    ($target:path, $context:tt, $entry:ident) => {
+        $target!(
+            $context,
+            (
+                1,
+                [1, 0],
+                [
+                    {
+                        $entry[0].binding = 0;
+                        $entry[0].visibility =
+                            $entry[0].visibility.union(wgpu::ShaderStages::VERTEX);
+                        $entry[0].ty = wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        };
+                    },
+                    {}
+                ]
+            )
+        );
+    };
+}
+
+#[macro_export]
+macro_rules! wgsl_gpu_main_fs_bind_groups_macro {
+    ($target:path, $context:tt, $entry:ident) => {
+        $target!(
+            $context,
+            (
+                2,
+                [1, 2],
+                [
+                    {
+                        $entry[0].binding = 0;
+                        $entry[0].visibility =
+                            $entry[0].visibility.union(wgpu::ShaderStages::FRAGMENT);
+                        $entry[0].ty = wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        };
+                    },
+                    {
+                        $entry[0].binding = 0;
+                        $entry[0].visibility =
+                            $entry[0].visibility.union(wgpu::ShaderStages::FRAGMENT);
+                        $entry[0].ty = wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        };
+
+                        $entry[1].binding = 1;
+                        $entry[1].visibility =
+                            $entry[1].visibility.union(wgpu::ShaderStages::FRAGMENT);
+                        $entry[1].ty =
+                            wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering);
+                    }
+                ]
+            )
+        );
+    };
+}
+
+// todo: write a proc macro to generate this macro call
+// proc macro can map function names to macro names
+wgsl_gpu::__pipeline_bind_groups!(
+    MAIN_BIND_GROUPS,
+    wgsl_gpu_main_vs_bind_groups_macro,
+    wgsl_gpu_main_fs_bind_groups_macro
+);
