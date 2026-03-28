@@ -1,6 +1,6 @@
 #![cfg_attr(target_arch = "spirv", no_std)]
 
-pub use wgsl_gpu_macros::{Arguments, entry};
+pub use wgsl_gpu_macros::*;
 
 #[macro_export]
 macro_rules! create_wrapper_function {
@@ -47,7 +47,7 @@ macro_rules! create_wrapper_function {
         $crate::create_wrapper_function!(
             __param,
             $wrapper_name, $name, $ret_macro,
-            ($($args)* $($arg)*,), ($($params)* $($param)*,),
+            ($($args)* $($arg)*), ($($params)* $($param)*),
             $arg_tail,
         );
     };
@@ -68,11 +68,12 @@ macro_rules! create_wrapper_function {
     // all arguments transformed, create function
     (
         (__ret, ($($wrapper_name:tt)*), $name:ident, ($($args:tt)*), $params:tt),
-        ($($ret_args:tt)*), $output:ident, ($($output_set:stmt;)*)
+        ($($ret_args:tt)*), $output:ident, ($($output_set:stmt;)*),
     ) => {
-        $($wrapper_name)* ($($args)* $($ret_args)*) {
+    	#[allow(clippy::too_many_arguments)]
+    	$($wrapper_name)* ($($args)* $($ret_args)*) {
             let $output = $name $params;
-            $($output_set)*
+            $($output_set;)*
         }
     };
 
@@ -91,22 +92,22 @@ macro_rules! create_wrapper_function {
 }
 
 pub trait Arguments {
-    type Arguments;
+	type Arguments;
 
-    fn from_arguments(arguments: Self::Arguments) -> Self;
+	fn from_arguments(arguments: Self::Arguments) -> Self;
 }
 
 #[cfg(not(target_arch = "spirv"))]
 #[doc(hidden)]
 pub const fn __const_slice<const N: usize, T>(array: &[T; N], len: usize) -> &[T] {
-    assert!(len <= N);
-    unsafe { std::slice::from_raw_parts(array.as_ptr(), len) }
+	assert!(len <= N);
+	unsafe { std::slice::from_raw_parts(array.as_ptr(), len) }
 }
 
 #[cfg(not(target_arch = "spirv"))]
 #[doc(hidden)]
 pub const fn __const_max(a: usize, b: usize) -> usize {
-    if a > b { a } else { b }
+	if a > b { a } else { b }
 }
 
 #[macro_export]
@@ -129,26 +130,28 @@ macro_rules! __pipeline_bind_groups {
     };
 
     ((__expand_fragment, $name:ident, $entry:ident, $vertex:tt), $fragment:tt) => {
-        $crate::__pipeline_bind_groups!(__internal, $name, $entry, [0, 1], $vertex, $fragment);
+        $crate::__pipeline_bind_groups!(__internal, $name, $entry, [0, 1, 2, 3, 4, 5, 6, 7], $vertex, $fragment);
     };
 
     (
         __internal, $name:ident, $entry:ident,
         [$($i_edits:expr),*],
-        ($v_size:expr, [$($v_sizes:expr),*], [$($v_edits:tt),*]),
-        ($f_size:expr, [$($f_sizes:expr),*], [$($f_edits:tt),*])
+        ($v_size:expr, [$($v_sizes:expr,)*], [$($v_edits:tt,)*]),
+        ($f_size:expr, [$($f_sizes:expr,)*], [$($f_edits:tt,)*])
     ) => {
         #[cfg(not(target_arch = "spirv"))]
         pub const $name: &[&[wgpu::BindGroupLayoutEntry]] = {
+        	pub const MAX_SETS: usize = 8;
+        	pub const MAX_BINDINGS: usize = 8;
             pub const SIZE: usize = wgsl_gpu::__const_max($v_size, $f_size);
 
-            pub const BIND_GROUPS_ENTRIES: [[wgpu::BindGroupLayoutEntry; 8]; 2] = const {
+            pub const BIND_GROUPS_ENTRIES: [[wgpu::BindGroupLayoutEntry; MAX_BINDINGS]; MAX_SETS] = const {
                 let mut entries = [[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::empty(),
                     ty: wgpu::BindingType::ExternalTexture,
                     count: None,
-                }; 8]; SIZE];
+                }; MAX_BINDINGS]; MAX_SETS];
 
                 $(
                 	#[allow(unused_mut, unused)]
@@ -160,7 +163,7 @@ macro_rules! __pipeline_bind_groups {
                 entries
             };
 
-            pub const BIND_GROUPS_REFS: [&[wgpu::BindGroupLayoutEntry]; 2] = [
+            pub const BIND_GROUPS_REFS: [&[wgpu::BindGroupLayoutEntry]; MAX_SETS] = [
                 $(
                     wgsl_gpu::__const_slice(&BIND_GROUPS_ENTRIES[$i_edits], wgsl_gpu::__const_max($v_sizes, $f_sizes)),
                 )*

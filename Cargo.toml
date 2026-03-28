@@ -1,19 +1,20 @@
 [workspace]
-members = ["wgsl-gpu"]
 resolver = "3"
-exclude =  ["example"]
+members = ["wgsl-gpu"]
+exclude = ["example"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-
 [workspace.dependencies]
 wgsl-gpu-macros = { path = "./wgsl-gpu-macros" }
 
 proc-macro2 = "1.0.106"
-quote = "1.0.45"
 syn = { version = "2.0.117", features = ["full"] }
+zyn = { version = "0.5.4", features = ["ext"] }
 
 [workspace.lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+unexpected_cfgs = { level = "allow", check-cfg = [
+  'cfg(target_arch, values("spirv"))'
+] }

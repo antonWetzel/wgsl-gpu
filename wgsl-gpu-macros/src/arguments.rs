@@ -1,152 +1,206 @@
 use std::ops::Not;
 
-use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned};
-use syn::DeriveInput;
+use zyn::{
+    Diagnostic, Span,
+    ext::{AttrExt, TypeExt},
+    format_ident,
+};
 
-pub fn arguments(input: DeriveInput) -> TokenStream {
-    let data = match &input.data {
-        syn::Data::Struct(data) => data,
-        syn::Data::Enum(data) => {
-            return quote_spanned!(data.enum_token.span => compile_eror!("Expected struct, not enum"));
+#[derive(zyn::Attribute)]
+#[zyn("wgsl_gpu")]
+pub struct ArgumentsAttributes {
+    #[zyn(default)]
+    attributes: bool,
+}
+
+#[derive(zyn::Attribute)]
+pub struct ArgumentsFieldAttributes {
+    #[zyn(default)]
+    location: Option<u32>,
+
+    #[zyn(default)]
+    output: Option<String>,
+
+    #[zyn(default)]
+    input: Option<String>,
+}
+
+impl ArgumentsFieldAttributes {
+    pub fn parse(fields: &syn::FieldsNamed) -> Result<Vec<Self>, Diagnostic> {
+        fields
+            .named
+            .iter()
+            .map(|field| {
+                field
+                    .attrs
+                    .iter()
+                    .find(|attr| attr.is("wgsl_gpu"))
+                    .map(|attr| {
+                        let arg = attr.parse_args::<zyn::Args>()?;
+                        return ArgumentsFieldAttributes::from_args(&arg);
+                    })
+                    .unwrap_or_else(|| {
+                        Err(syn::Error::new(field.span(), "missing wgsl_gpu attribute").into())
+                    })
+            })
+            .collect()
+    }
+
+    fn output_attribute(&self) -> zyn::Output {
+        if let Some(location) = self.location {
+            zyn::zyn! { location = {{ location }} }
+        } else if let Some(output) = &self.output {
+            zyn::zyn! { {{ zyn::format_ident!("{}", output) }} }
+        } else {
+            Diagnostic::from(syn::Error::new(
+                Span::call_site(),
+                "Expected location or output attribute",
+            ))
+            .into()
         }
-        syn::Data::Union(data) => {
-            return quote_spanned!(data.union_token.span => compile_eror!("Expected struct, not union"));
+    }
+    fn input_attribute(&self) -> zyn::Output {
+        if let Some(location) = self.location {
+            zyn::zyn! { location = {{ location }} }
+        } else if let Some(input) = &self.input {
+            zyn::zyn! { {{ zyn::format_ident!("{}", input) }} }
+        } else {
+            Diagnostic::from(syn::Error::new(
+                Span::call_site(),
+                "Expected location or input attribute",
+            ))
+            .into()
         }
+    }
+}
+
+#[zyn::element]
+pub fn arguments_locations<'a>(
+    name: &'a zyn::syn::Ident,
+    attributes: &'a ArgumentsAttributes,
+    fields: &'a syn::FieldsNamed,
+    fields_attributes: &'a [ArgumentsFieldAttributes],
+) -> zyn::TokenStream {
+    if attributes.attributes.not() {
+        return zyn::Output::default();
+    }
+
+    zyn::zyn! {
+        #[cfg(not(target_arch = "spirv"))]
+        impl {{ name }} {
+            pub const ATTRIBUTES: &[wgpu::VertexAttribute] = &[
+                @for (arg in fields.named.iter().zip(fields_attributes.iter())) {
+                    @arguments_locations_field(name = name, field = arg.0, attributes = arg.1)
+                }
+            ];
+        }
+    }
+}
+
+#[zyn::element]
+fn arguments_locations_field<'a>(
+    name: &'a syn::Ident,
+    field: &'a syn::Field,
+    attributes: &'a ArgumentsFieldAttributes,
+) -> zyn::Output {
+    let Some(location) = attributes.location else {
+        return Diagnostic::from(syn::Error::new_spanned(
+            field,
+            "location attribute required",
+        ))
+        .into();
     };
 
-    let name = &input.ident;
+    let wgpu_attribute = rust_type_to_wgpu_attribute(&field.ty);
+    zyn::zyn! {
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::{{ wgpu_attribute }},
+            offset: std::mem::offset_of!({{ name }}, {{ field.ident }}) as u64,
+            shader_location: {{ location }},
+        },
+    }
+}
 
-    let generate_attributes = input
-        .attrs
-        .iter()
-        .filter(|attribute| attribute.path().is_ident("wgsl_gpu"))
-        .filter_map(|attribute| match &attribute.meta {
-            syn::Meta::List(list) => Some(list.tokens.clone()),
-            _ => None,
-        })
-        .filter_map(|tokens| syn::parse2::<syn::Meta>(tokens).ok())
-        .any(|meta| meta.path().is_ident("attributes"));
-
-    let arg_types = data.fields.iter().map(|field| &field.ty);
-    let fields = data
-        .fields
-        .iter()
-        .map(|field| field.ident.as_ref().unwrap());
-    let indices = (0..data.fields.len()).map(syn::Index::from);
-
-    let attributes = data
-        .fields
-        .iter()
-        .map(|field| find_attribute(field.attrs.iter().rev()));
-
-    let tuple_types = arg_types.clone();
-    let tuple_fields = fields.clone();
-    let tuple_arg = fields.clone();
-
-    let locations = generate_attributes.then(|| {
-        let attrs = data.fields.iter().map(|field| {
-            let location = field_location(field);
-            let att = rust_type_to_wgpu_attribute(&field.ty);
-            quote! { #location => #att }
-        });
-
-        quote! {
-            #[cfg(not(target_arch = "spirv"))]
-            impl #name {
-                pub const ATTRIBUTES: &[wgpu::VertexAttribute] = wgpu::vertex_attr_array![
-                    #( #attrs, )*
-                ]
-                    .as_slice();
-            }
-        }
-    });
-
-    let ret_attributes = data
-        .fields
-        .iter()
-        .map(|field| find_attribute(field.attrs.iter()));
-    let ret_types = arg_types.clone();
-    let ret_fields = fields.clone();
-
-    let ret_fields_asign = fields.clone();
-    let ret_field_read = fields.clone();
-
-    let macro_name = quote::format_ident!("wgsl_gpu_{}_transform", name);
-
-    quote! {
-        impl wgsl_gpu::Arguments for #name {
-            type Arguments = (#(#arg_types,)*);
+#[zyn::element]
+pub fn arguments_trait_impl<'a>(
+    name: &'a zyn::syn::Ident,
+    fields: &'a syn::FieldsNamed,
+) -> zyn::TokenStream {
+    zyn::zyn! {
+        impl wgsl_gpu::Arguments for {{ name }} {
+            type Arguments = (@for (field in fields.named.iter()) {
+                {{ field.ty }},
+            });
 
             fn from_arguments(arguments: Self::Arguments) -> Self {
                 Self {
-                    #(
-                        #fields: arguments.#indices,
-                    )*
+                    @for (arg in fields.named.iter().enumerate()) {
+                        {{ arg.1.ident }}: arguments.{{ zyn::syn::Index::from(arg.0) }},
+                    }
                 }
             }
         }
+    }
+}
 
-        #locations
-
+#[zyn::element]
+pub fn arguments_data_macro<'a>(
+    name: &'a syn::Ident,
+    fields: &'a syn::FieldsNamed,
+    fields_attributes: &'a [ArgumentsFieldAttributes],
+) -> zyn::Output {
+    zyn::zyn! {
         #[spirv_std::macros::spirv_recursive_for_testing]
         #[macro_export]
         #[doc(hidden)]
-        macro_rules! #macro_name {
-            // get arumnents and parameters
+        macro_rules! {{ format_ident!("wgsl_gpu_{}_transform", name) }} {
+            // get arguments and parameters
             (__arg, $target:path, $context:tt) => {
-                $target!($context, (#( #[spirv(#attributes)] #tuple_arg: #tuple_types),*), (wgsl_gpu::Arguments::from_arguments((#(#tuple_fields,)*))),);
+                $target!(
+                    $context,
+                    (@for (arg in fields.named.iter().zip(fields_attributes.iter())) {
+                        #[spirv({{arg.1.input_attribute()}})] {{ arg.0.ident }}: {{ arg.0.ty }},
+                    }),
+                    (wgsl_gpu::Arguments::from_arguments((@for (field in fields.named.iter()) {
+                        {{ field.ident }},
+                    })),),
+                );
             };
             // get arguments for return values
             (__ret, $target:path, $context:tt) => {
-                $target!($context, (#( #[spirv(#ret_attributes)] #ret_fields: &mut #ret_types),*), output, (#(*#ret_fields_asign = output.#ret_field_read;)*));
+                $target!(
+                    $context,
+                    (@for (arg in fields.named.iter().zip(fields_attributes.iter())) {
+                        #[spirv({{arg.1.output_attribute()}})] {{ arg.0.ident }}: &mut {{ arg.0.ty }},
+                    }),
+                    output,
+                    (@for (field in fields.named.iter()) {
+                        *{{ field.ident }} = output.{{ field.ident }};
+                    }),
+                );
             };
         }
     }
 }
 
-fn find_attribute<'a>(attrs: impl Iterator<Item = &'a syn::Attribute>) -> &'a TokenStream {
-    attrs
-        .filter(|attribute| attribute.path().is_ident("wgsl_gpu"))
-        .find_map(|attribute| match &attribute.meta {
-            syn::Meta::List(list) => Some(&list.tokens),
-            _ => None,
-        })
-        .expect("every member requires a wgsl_gpu attribute")
-}
-
-fn field_location(field: &syn::Field) -> syn::Expr {
-    let tokens = find_attribute(field.attrs.iter());
-
-    let meta = syn::parse2::<syn::Meta>(tokens.clone()).unwrap();
-
-    if meta.path().is_ident("location").not() {
-        panic!("attributes require locations");
-    }
-
-    match meta {
-        syn::Meta::NameValue(named) => named.value,
-        _ => panic!("location must be \"location = value\""),
-    }
-}
-
+// todo: replace panic with compile errors
 fn rust_type_to_wgpu_attribute(ty: &syn::Type) -> syn::Ident {
     match ty {
         syn::Type::Path(path) => {
             let name = path.path.segments.last().unwrap().ident.to_string();
             match name.as_str() {
-                "f32" => quote::format_ident!("Float32"),
-                "Vec2" => quote::format_ident!("Float32x2"),
-                "Vec3" => quote::format_ident!("Float32x3"),
-                "Vec4" => quote::format_ident!("Float32x4"),
-                "u32" => quote::format_ident!("Uint32"),
-                "UVec2" => quote::format_ident!("Uint32x2"),
-                "UVec3" => quote::format_ident!("Uint32x3"),
-                "UVec4" => quote::format_ident!("Uint32x4"),
-                "i32" => quote::format_ident!("Sint32"),
-                "IVec2" => quote::format_ident!("Sint32x2"),
-                "IVec3" => quote::format_ident!("Sint32x3"),
-                "IVec4" => quote::format_ident!("Sint32x4"),
+                "f32" => zyn::format_ident!("Float32"),
+                "Vec2" => zyn::format_ident!("Float32x2"),
+                "Vec3" => zyn::format_ident!("Float32x3"),
+                "Vec4" => zyn::format_ident!("Float32x4"),
+                "u32" => zyn::format_ident!("Uint32"),
+                "UVec2" => zyn::format_ident!("Uint32x2"),
+                "UVec3" => zyn::format_ident!("Uint32x3"),
+                "UVec4" => zyn::format_ident!("Uint32x4"),
+                "i32" => zyn::format_ident!("Sint32"),
+                "IVec2" => zyn::format_ident!("Sint32x2"),
+                "IVec3" => zyn::format_ident!("Sint32x3"),
+                "IVec4" => zyn::format_ident!("Sint32x4"),
                 _ => panic!("unsupported type for vertex attribute: {}", name),
             }
         }
@@ -174,15 +228,15 @@ fn rust_type_to_wgpu_attribute(ty: &syn::Type) -> syn::Ident {
 
             // Map (element type, dimension) to the wgpu format
             match (elem_ty.as_str(), dim) {
-                ("f32", 2) => quote::format_ident!("Float32x2"),
-                ("f32", 3) => quote::format_ident!("Float32x3"),
-                ("f32", 4) => quote::format_ident!("Float32x4"),
-                ("u32", 2) => quote::format_ident!("Uint32x2"),
-                ("u32", 3) => quote::format_ident!("Uint32x3"),
-                ("u32", 4) => quote::format_ident!("Uint32x4"),
-                ("i32", 2) => quote::format_ident!("Sint32x2"),
-                ("i32", 3) => quote::format_ident!("Sint32x3"),
-                ("i32", 4) => quote::format_ident!("Sint32x4"),
+                ("f32", 2) => zyn::format_ident!("Float32x2"),
+                ("f32", 3) => zyn::format_ident!("Float32x3"),
+                ("f32", 4) => zyn::format_ident!("Float32x4"),
+                ("u32", 2) => zyn::format_ident!("Uint32x2"),
+                ("u32", 3) => zyn::format_ident!("Uint32x3"),
+                ("u32", 4) => zyn::format_ident!("Uint32x4"),
+                ("i32", 2) => zyn::format_ident!("Sint32x2"),
+                ("i32", 3) => zyn::format_ident!("Sint32x3"),
+                ("i32", 4) => zyn::format_ident!("Sint32x4"),
                 _ => panic!("unsupported array type for vertex attribute: [{elem_ty}; {dim}]"),
             }
         }
